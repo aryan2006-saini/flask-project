@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Tag Trends Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #e3ecf3;
+        }
+
+        .dashboard-header {
+            text-align: center;
+            padding: 20px;
+            background-color: #2d3e50;
+            color: white;
+            font-size: 28px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .dashboard-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 40px;
+            padding: 40px;
+        }
+
+        .chart-box {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            width: 90vw;
+            max-width: 1400px;
+        }
+
+        .chart-box h2 {
+            font-size: 22px;
+            margin-bottom: 20px;
+            color: #333;
+            text-align: center;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 500px !important;
+        }
+
+        .bar-charts-row {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 30px;
+            width: 100%;
+        }
+
+        .bar-chart-container {
+            background: #ffffff;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+            flex: 1 1 600px;
+            max-width: 700px;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        select {
+            padding: 6px 12px;
+            font-size: 16px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+        }
+
+        @media (max-width: 768px) {
+
+            .chart-box,
+            .bar-chart-container {
+                width: 95vw;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard-header">Top Stack Overflow Tags Dashboard
+        <br><p style="color: greenyellow;">(By Aryan Saini)</p>
+    </div>
+
+    <div class="dashboard-container">
+
+        <!-- Combined Line Chart with Metric Selection -->
+        <div class="chart-box">
+            <h2>Top 10 Tags - Line Chart</h2>
+            <div class="controls">
+                <select id="lineChartMetricSelect">
+                    <option value="count">Count</option>
+                    <option value="percentage">Percentage</option>
+                    <option value="growth">Growth Rate</option>
+                </select>
+            </div>
+            <canvas id="combinedLineChart"></canvas>
+        </div>
+
+        <!-- Bar Charts in One Row -->
+        <div class="bar-charts-row">
+            <!-- Count -->
+            <div class="bar-chart-container">
+                <h2>Top <span id="countTopValue">10</span> Tags - Bar Chart (Count)</h2>
+                <div class="controls">
+                    <select id="countMonthSelect"></select>
+                    <select id="countTopSelect">
+                        <option value="10" selected>Top 10</option>
+                        <option value="20">Top 20</option>
+                        <option value="30">Top 30</option>
+                    </select>
+                </div>
+                <canvas id="countBarChart"></canvas>
+            </div>
+
+            <!-- Percentage -->
+            <div class="bar-chart-container">
+                <h2>Top <span id="percentageTopValue">10</span> Tags - Bar Chart (Percentage %)</h2>
+                <div class="controls">
+                    <select id="percentageMonthSelect"></select>
+                    <select id="percentageTopSelect">
+                        <option value="10" selected>Top 10</option>
+                        <option value="20">Top 20</option>
+                        <option value="30">Top 30</option>
+                    </select>
+                </div>
+                <canvas id="percentageBarChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Tag Distribution Pie Chart -->
+        <div class="chart-box">
+            <h2>Tag Distribution - Pie Chart</h2>
+            <select id="pieMonthSelect"></select>
+            <canvas id="tagPieChart"></canvas>
+        </div>
+          <!-- Top Tags Associated with Python -->
+        <div class="chart-box">
+            <h2>Top Tags Associated with Python</h2>
+            <canvas id="pythonCoOccurrenceChart"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <script>
+        let combinedLineChart, countBarChart, percentageBarChart, tagPieChart, pythonCoOccurrenceChart;
+
+        // Generic function to generate colors
+        function generateColors(length) {
+            const palette = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'brown', 'pink', 'gold', 'teal', 'lime', 'indigo', 'gray', 'navy', 'olive', 'maroon', 'coral', 'orchid', 'salmon'];
+            return Array.from({
+                length
+            }, (_, i) => palette[i % palette.length]);
+        }
+
+        async function fetchData() {
+    const res = await fetch("http://127.0.0.1:5000/data");
+    return await res.json();
+}
+
+        function sortTagsByMonth(data, month, topN) {
+            const entries = Object.entries(data).map(([tag, info]) => {
+                const monthIndex = info.months.indexOf(month);
+                return [tag, info.values[monthIndex] || 0];
+            });
+            return entries.sort((a, b) => b[1] - a[1]).slice(0, topN);
+        }
+
+        function updateDropdown(selectEl, months) {
+            selectEl.innerHTML = '';
+            months.forEach(month => {
+                const opt = document.createElement("option");
+                opt.value = month;
+                opt.textContent = month;
+                selectEl.appendChild(opt);
+            });
+        }
+
+        function createBarChart(ctx, labels, values, colors, labelText, percent = false) {
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: labelText,
+                        data: values,
+                        backgroundColor: colors
+                    }]
+                },
+                options: {
+                    indexAxis: 'x',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: labelText
+                            },
+                            ticks: percent ? {
+                                callback: val => val + "%"
+                            } : {}
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: "Tags"
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        function createLineChart(ctx, data, selectedMetric, title, percent = false) {
+            const top10 = Object.entries(data)
+                .sort((a, b) => b[1].values.reduce((x, y) => x + y) - a[1].values.reduce((x, y) => x + y))
+                .slice(0, 10);
+
+            const months = top10[0][1].months;
+            const colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'brown', 'pink', 'gold'];
+
+            return new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: top10.map(([tag, info], i) => ({
+                        label: tag,
+                        data: info.values,
+                        borderColor: colors[i % colors.length],
+                        backgroundColor: colors[i % colors.length],
+                        fill: false,
+                        tension: 0.3
+                    }))
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: title
+                            },
+                            ticks: percent ? {
+                                callback: v => v + "%"
+                            } : {}
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: "Month"
+                            },
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Create pie chart
+        function createPieChart(ctx, labels, values) {
+            const colors = generateColors(labels.length);
+            return new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Tag Distribution',
+                        data: values,
+                        backgroundColor: colors,
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        datalabels: {
+                            formatter: (value, context) => {
+                                const total = context.dataset.data.reduce((accumulator, currentValue) => accumulator + currentValue, 0);
+                                const percentage = (value / total * 100).toFixed(1) + '%';
+                                return percentage;
+                            },
+                            color: '#fff',
+                            font: {
+                                weight: 'bold'
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+              // Create the Python Co-occurrence Chart
+        function createPythonCoOccurrenceChart(ctx, labels, values) {
+            const colors = generateColors(labels.length);
+            return new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Co-occurrence Count',
+                        data: values,
+                        backgroundColor: colors
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Co-occurrence Count'
+                            },
+                            beginAtZero: true
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Tag'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+    async function initCharts() {
+        const data = await fetchData();
+
+        // Combined Line Chart with Metric Selection
+        const lineChartCtx = document.getElementById('combinedLineChart').getContext('2d');
+        combinedLineChart = createLineChart(lineChartCtx, data.count, 'count', 'Top 10 Tags - Line Chart (Count)');
+
+        const lineChartMetricSelect = document.getElementById('lineChartMetricSelect');
+        lineChartMetricSelect.addEventListener("change", (event) => {
+            const selectedMetric = event.target.value;
+            const chartTitle = `Top 10 Tags - Line Chart (${selectedMetric.charAt(0).toUpperCase() + selectedMetric.slice(1)})`;
+            combinedLineChart.destroy();
+            combinedLineChart = createLineChart(lineChartCtx, data[selectedMetric], selectedMetric, chartTitle, selectedMetric === "percentage");
+        });
+
+        // Get months for dropdown selection
+        const months = data.count[Object.keys(data.count)[0]].months;
+        updateDropdown(document.getElementById('countMonthSelect'), months);
+        updateDropdown(document.getElementById('percentageMonthSelect'), months);
+        updateDropdown(document.getElementById('pieMonthSelect'), months);
+
+        const updateBarChart = (chartRef, canvasId, dataType, monthSelectId, topSelectId, isPercentage) => {
+            const month = document.getElementById(monthSelectId).value;
+            const topN = parseInt(document.getElementById(topSelectId).value);
+            const sorted = sortTagsByMonth(data[dataType], month, topN);
+            const tags = sorted.map(([tag]) => tag);
+            const values = sorted.map(([, val]) => val);
+            const colors = generateColors(topN);
+
+            if (chartRef) chartRef.destroy();
+            return createBarChart(document.getElementById(canvasId), tags, values, colors, isPercentage ? "Percentage" : "Count", isPercentage);
+        };
+
+        const countMonthSelect = document.getElementById("countMonthSelect");
+        const countTopSelect = document.getElementById("countTopSelect");
+        const percentageMonthSelect = document.getElementById("percentageMonthSelect");
+        const percentageTopSelect = document.getElementById("percentageTopSelect");
+
+        function updateCountBar() {
+            countBarChart = updateBarChart(countBarChart, 'countBarChart', 'count', 'countMonthSelect', 'countTopSelect', false);
+            document.getElementById("countTopValue").textContent = countTopSelect.value;
+        }
+
+        function updatePercentageBar() {
+            percentageBarChart = updateBarChart(percentageBarChart, 'percentageBarChart', 'percentage', 'percentageMonthSelect', 'percentageTopSelect', true);
+            document.getElementById("percentageTopValue").textContent = percentageTopSelect.value;
+        }
+
+        countMonthSelect.addEventListener("change", updateCountBar);
+        countTopSelect.addEventListener("change", updateCountBar);
+        percentageMonthSelect.addEventListener("change", updatePercentageBar);
+        percentageTopSelect.addEventListener("change", updatePercentageBar);
+
+        updateCountBar();
+        updatePercentageBar();
+
+        // Create and update the pie chart
+        function updatePieChart() {
+            const selectedMonth = document.getElementById('pieMonthSelect').value;
+            const monthIndex = months.indexOf(selectedMonth);
+
+            // Extract data for the selected month
+            const pieData = {};
+            for (const tag in data.count) {
+                pieData[tag] = data.count[tag].values[monthIndex];
+            }
+
+            // Sort tags by count for the selected month
+            const sortedTags = Object.entries(pieData).sort(([, a], [, b]) => b - a);
+            const topTags = sortedTags.slice(0, 10); // Get top 10 tags
+            const labels = topTags.map(([tag]) => tag);
+            const values = topTags.map(([, value]) => value);
+
+            // Destroy existing chart if it exists
+            if (tagPieChart) {
+                tagPieChart.destroy();
+            }
+
+            const ctx = document.getElementById('tagPieChart').getContext('2d');
+            tagPieChart = createPieChart(ctx, labels, values);
+        }
+
+        // Update pie chart on month change
+        const pieMonthSelect = document.getElementById("pieMonthSelect");
+        pieMonthSelect.addEventListener("change", updatePieChart);
+
+        // Initial pie chart
+        updatePieChart();
+
+          //Create and update the Python Co-occurrence Chart
+        function updatePythonCoOccurrenceChart() {
+            // Extract labels and values from data
+            const labels = data.python_tags.map(item => item[0]);
+            const values = data.python_tags.map(item => item[1]);
+            // Destroy existing chart if it exists
+            if (pythonCoOccurrenceChart) {
+                pythonCoOccurrenceChart.destroy();
+            }
+            const ctx = document.getElementById('pythonCoOccurrenceChart').getContext('2d');
+            pythonCoOccurrenceChart = createPythonCoOccurrenceChart(ctx, labels, values);
+        }
+
+       // Initial call to create Python Co-occurrence Chart
+        updatePythonCoOccurrenceChart();
+    }
+
+    window.onload = initCharts;
+    </script>
+</body>
+</html>
