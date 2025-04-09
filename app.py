@@ -1,38 +1,3 @@
-# import pandas as pd
-
-# # === CONFIG ===
-# csv_file = "combined_output.csv"  # Your full CSV file
-# date_column = "Date"
-# time_column = "Time"
-
-# # === READ CSV ===
-# print(f"Reading {csv_file}...")
-# df = pd.read_csv(csv_file)
-
-# # === STRIP COLUMN NAMES (in case of extra spaces) ===
-# df.columns = df.columns.str.strip()
-
-# # === COMBINE DATE + TIME into one datetime column ===
-# df['DateTime'] = pd.to_datetime(df['Date'] + ' ' + df['Time'], dayfirst=True, errors='coerce')
-
-# # === DROP rows with invalid DateTime ===
-# df.dropna(subset=['DateTime'], inplace=True)
-
-# # === ADD 'Month' COLUMN for grouping ===
-# df['Month'] = df['DateTime'].dt.to_period('M').astype(str)
-
-# # === DROP unnecessary columns ===
-# df = df.drop(columns=['Date', 'Time'])
-
-# # === GROUP and EXPORT EACH MONTH ===
-# for month in df['Month'].unique():
-#     month_df = df[df['Month'] == month].drop(columns='Month')
-#     file_name = f"{month}.parquet"
-#     month_df.to_parquet(file_name, index=False, compression='snappy')
-#     print(f"✅ Saved: {file_name} ({len(month_df)} rows)")
-
-# print("✅ Done creating monthly .parquet files!")
-
 
 from flask import Flask, jsonify
 import pandas as pd
