@@ -1,25 +1,32 @@
-
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 import pandas as pd
 import os
 from flask_cors import CORS
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 CORS(app)
 
-# === LOAD ALL PARQUET FILES ===
+# === Serve index.html and static frontend files ===
+@app.route('/')
+def serve_index():
+    return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/<path:path>')
+def serve_static(path):
+    return send_from_directory(app.static_folder, path)
+
+# === Load all Parquet files from 'monthly_data/' folder ===
 def load_parquet_files():
     dataframes = []
-    for file in os.listdir():
-        if file.endswith(".parquet"):
-            df = pd.read_parquet(file)
+    for file in os.listdir('monthly_data'):
+        if file.endswith('.parquet'):
+            df = pd.read_parquet(os.path.join('monthly_data', file))
             dataframes.append(df)
-    if dataframes:
-        return pd.concat(dataframes, ignore_index=True)
-    else:
-        raise FileNotFoundError("No parquet files found!")
+    if not dataframes:
+        raise FileNotFoundError("No parquet files found in monthly_data/")
+    return pd.concat(dataframes, ignore_index=True)
 
-# === CALCULATE CO-OCCURRENCE ===
+# === Calculate co-occurring tags for 'python' ===
 def calculate_co_occurrence(df):
     grouped = df.groupby('Question ID')['Tag'].apply(list)
     python_questions = grouped[grouped.apply(lambda x: 'python' in x)]
@@ -28,14 +35,12 @@ def calculate_co_occurrence(df):
         for tag in tags:
             if tag != 'python':
                 co_occurrence_counts[tag] = co_occurrence_counts.get(tag, 0) + 1
-    sorted_co_occurrences = sorted(co_occurrence_counts.items(), key=lambda x: x[1], reverse=True)
-    return sorted_co_occurrences[:10]
+    return sorted(co_occurrence_counts.items(), key=lambda x: x[1], reverse=True)[:10]
 
-@app.route("/data")
+@app.route('/data')
 def get_data():
     try:
         df = load_parquet_files()
-
         df.columns = df.columns.str.strip()
 
         df['DateTime'] = pd.to_datetime(df['DateTime'], errors='coerce')
@@ -49,13 +54,15 @@ def get_data():
 
         python_tags = calculate_co_occurrence(df)
 
+        # === Count ===
         count_data = {
             tag: {
                 "months": formatted_months,
-                "values": [int(val) for val in monthly_data[tag].tolist()]
+                "values": [int(v) for v in monthly_data[tag].tolist()]
             } for tag in monthly_data.columns
         }
 
+        # === Percentage ===
         monthly_totals = monthly_data.sum(axis=1)
         percentage_data = {
             tag: {
@@ -67,13 +74,15 @@ def get_data():
             } for tag in monthly_data.columns
         }
 
+        # === Volatility ===
         volatile_data = {
             tag: {
                 "months": formatted_months,
-                "values": [int(val) for val in monthly_data[tag].diff().fillna(0).abs().tolist()]
+                "values": [int(v) for v in monthly_data[tag].diff().fillna(0).abs().tolist()]
             } for tag in monthly_data.columns
         }
 
+        # === Growth ===
         growth_data = {
             tag: {
                 "months": formatted_months[1:],
@@ -84,9 +93,10 @@ def get_data():
             } for tag in monthly_data.columns
         }
 
+        # === Pie Chart (Top tags of latest month) ===
         latest_month = formatted_months[-1]
-        latest_data = {tag: int(monthly_data[tag][-1]) for tag in monthly_data.columns}
-        top_tags = sorted(latest_data.items(), key=lambda x: x[1], reverse=True)[:15]
+        latest_counts = {tag: int(monthly_data[tag][-1]) for tag in monthly_data.columns}
+        top_tags = sorted(latest_counts.items(), key=lambda x: x[1], reverse=True)[:15]
         pie_data = {
             "labels": [tag for tag, _ in top_tags],
             "values": [value for _, value in top_tags]
@@ -105,4 +115,5 @@ def get_data():
         return jsonify({"error": str(e)})
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # for Railway
+    app.run(host="0.0.0.0", port=port)
