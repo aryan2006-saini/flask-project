@@ -2,3 +2,6 @@ flask
 pandas
 pyarrow       # OR fastparquet (whichever you use)
 gunicorn
+flask_cors
+numpy
+jsonify
